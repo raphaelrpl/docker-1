@@ -15,7 +15,7 @@ EXPOSE 8080
 # Customizable Variables
 ENV GEOSERVER_URL "/geoserver"
 ENV GEOSERVER_DATA_DIR /opt/geoserver/data_dir
-ENV APP_DATA_DIR /opt/app
+ENV APP_DATA_DIR /Devel
 
 RUN apt-get update && \
     apt-get install -y software-properties-common wget unzip nano && \
@@ -30,11 +30,21 @@ RUN apt-get update && \
 RUN mkdir -p $GEOSERVER_DATA_DIR ${APP_DATA_DIR}
 
 WORKDIR ${APP_DATA_DIR}
+# Configure tomcat ans set geoserver path
+# COPY geoserver.xml /var/lib/tomcat8/conf/Catalina/localhost
+
 # Install GeoServer
 RUN wget --no-verbose "http://sourceforge.net/projects/geoserver/files/GeoServer/2.11.0/geoserver-2.11.0-war.zip" && \
     unzip geoserver-2.11.0-war.zip && \
     rm geoserver-2.11.0-war.zip
+    # chown root:tomcat8 /var/lib/tomcat8/conf/Catalina/localhost/geoserver.xml
+
+RUN echo "LC_ALL=\"en_US.UTF-8\"" >> /etc/default/locale && \
+    sed "143i<Context path=\"$GEOSERVER_URL\" docBase=\"${APP_DATA_DIR}/geoserver.war\"/>" /var/lib/tomcat8/conf/server.xml > /tmp/server.xml && \
+    mv /tmp/server.xml /var/lib/tomcat8/conf/server.xml
 
 COPY docker-entrypoint.sh /
+
+VOLUME /opt/geoserver/data_dir
 
 ENTRYPOINT [ "/docker-entrypoint.sh" ]

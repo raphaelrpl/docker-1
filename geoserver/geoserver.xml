@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Context path="$GEOSERVER_URL" 
+	docBase="/Devel/geoserver.war"
+	antiResourceLocking="false" privileged="true" />
