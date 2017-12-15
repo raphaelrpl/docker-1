@@ -19,6 +19,7 @@ valid $? "Error: Could not clone BDQueimadas Light"
 
 cd $BDQLIGHT_INSTALL_PATH
 npm install
+
 grunt
 
 # No error
