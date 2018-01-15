@@ -44,8 +44,8 @@ stdout_logfile=/var/log/terrama2-webapp-server.out.log" > /etc/supervisor/conf.d
 
   TERRAMA2_WEBAPP_BASE_PATH=$(normalize_url ${TERRAMA2_WEBAPP_BASE_PATH})
 
-  if [ -z "${TERRAMA2_DATA_DIR}" ]; then
-    TERRAMA2_DATA_DIR="/data"
+  if [ -z "${TERRAMA2_DATA_PATH}" ]; then
+    TERRAMA2_DATA_PATH="/data"
   fi
 
   if [ -z "${POSTGRESQL_USER}" ]; then
@@ -69,7 +69,7 @@ stdout_logfile=/var/log/terrama2-webapp-server.out.log" > /etc/supervisor/conf.d
 
   # Replace values in JSON
   write_to "\"basePath\":" "\"basePath\": \"${TERRAMA2_WEBAPP_BASE_PATH}\"," "c"
-  write_to "\"defaultFilePath\":" "\"defaultFilePath\": \"${TERRAMA2_DATA_DIR}\"," "c"
+  write_to "\"defaultFilePath\":" "\"defaultFilePath\": \"${TERRAMA2_DATA_PATH}\"," "c"
   write_to "\"username\":" "\"username\": \"${POSTGRESQL_USER}\"," "c"
   write_to "\"password\":" "\"password\": \"${POSTGRESQL_PASSWORD}\"," "c"
   write_to "\"database\":" "\"database\": \"${POSTGRESQL_DATABASE}\"," "c"

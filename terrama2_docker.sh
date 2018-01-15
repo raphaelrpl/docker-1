@@ -36,9 +36,9 @@ function remove_container() {
   local CONTAINER_NAME=$1
 
   if [ "$(docker ps -aq -f name=${CONTAINER_NAME})" ]; then 
-    if [ "$(docker ps -aq -f status=exited -f name=${CONTAINER_NAME})" ]; then
+    if [ "$(docker ps -aq -f status=exited -f status=created -f name=${CONTAINER_NAME})" ]; then
       # cleanup
-      docker rm ${CONTAINER_NAME}
+      docker rm ${CONTAINER_NAME} &>/dev/null
     fi
   fi
 }
@@ -65,11 +65,13 @@ OPERATION=$1
 for key in "$@"; do
   case $key in
     --with-pg*)
-    _RUN_PG="${key#*=}"
+    _RUN_PG=true
+    POSTGRESQL_HOST="${key#*=}"
     shift # past argument
     ;;
     --with-geoserver*)
-    _RUN_GEOSERVER="${key#*=}"
+    _RUN_GEOSERVER=true
+    GEOSERVER_HOST="${key#*=}"
     shift # past argument
     ;;
     --project*)
@@ -80,11 +82,10 @@ done
 
 ##########################################################
 # Environment Variables
-GITHUB_REPOSITORY=https://github.com/terrama2/docker.git
 # TERRAMA2_PROJECT_NAME=$2
-TERRAMA2_DOCKER_REGISTRY=terrama2.dpi.inpe.br:443
-TERRAMA2_CONFIG_DIR=./conf
-TERRAMA2_DATA_DIR=data_vol
+# TERRAMA2_DOCKER_REGISTRY=terrama2.dpi.inpe.br:443
+# TERRAMA2_CONFIG_DIR=./conf
+# TERRAMA2_DATA_DIR=data_vol
 PROJECT_PATH=${PWD}
 
 if [ -z "${TERRAMA2_PROJECT_NAME}" ]; then
@@ -97,40 +98,13 @@ if [ -z "${TERRAMA2_PROJECT_NAME}" ]; then
   echo ""
 fi
 
-if [ -z "${TERRAMA2_WEBAPP_ADDRESS}" ]; then
-  TERRAMA2_WEBAPP_ADDRESS=127.0.0.1:36000
-fi
-
-if [ -z "${TERRAMA2_WEBMONITOR_ADDRESS}" ]; then
-  TERRAMA2_WEBMONITOR_ADDRESS=127.0.0.1:36001
-fi
-
-if [ -z "${GEOSERVER_HOST}" ]; then
-  GEOSERVER_HOST=127.0.0.1:8081
-fi
-
-if [ -z "${POSTGRES_PASSWORD}" ]; then
-  POSTGRES_PASSWORD=mysecretpassword
-fi
-
-if [ -z "${POSTGRESQL_HOST}" ]; then
-  POSTGRESQL_HOST=127.0.0.1:5433
-fi
 ##########################################################
 echo ""
 echo "#############"
 echo "# Variables #"
 echo "#############"
 echo ""
-echo "TERRAMA2_PROJECT_NAME=${TERRAMA2_PROJECT_NAME}"
-echo "TERRAMA2_DOCKER_REGISTRY=${TERRAMA2_DOCKER_REGISTRY}"
-echo "TERRAMA2_CONFIG_DIR=${TERRAMA2_CONFIG_DIR}"
-echo "TERRAMA2_DATA_DIR=${TERRAMA2_DATA_DIR}"
-echo "TERRAMA2_WEBAPP_ADDRESS=${TERRAMA2_WEBAPP_ADDRESS}"
-echo "TERRAMA2_WEBMONITOR_ADDRESS=${TERRAMA2_WEBMONITOR_ADDRESS}"
-echo "GEOSERVER_HOST=${GEOSERVER_HOST}"
-echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
-echo "POSTGRESQL_HOST=${POSTGRESQL_HOST}"
+cat ${PROJECT_PATH}/.env
 ##########################################################
 
 cd ${PROJECT_PATH}
@@ -141,6 +115,7 @@ POSTGRESQL_CONTAINER=${TERRAMA2_PROJECT_NAME}_pg
 case ${OPERATION} in
   "rm")
     echo ""
+    # TODO: Confirmation when a container can be removed.
     if [ ! -z "$_RUN_GEOSERVER" ] && [ "$_RUN_GEOSERVER" == "true" ]; then
       if [ ! $(is_running ${GEOSERVER_CONTAINER}) -eq 1 ]; then
         echo -n "Removing GeoServer ... "
@@ -161,8 +136,7 @@ case ${OPERATION} in
       fi
     fi
     echo -n "Removing TerraMA² ... "
-    docker-compose -p ${TERRAMA2_PROJECT_NAME} stop
-    printf 'y\n' | docker-compose -p ${TERRAMA2_PROJECT_NAME} rm >/dev/null
+    printf 'y\n' | docker-compose -p ${TERRAMA2_PROJECT_NAME} rm &>/dev/null
     valid $? "Error: Could not remove TerraMA²"
     exit 0
   ;;
@@ -202,7 +176,7 @@ case ${OPERATION} in
 
       GEOSERVER_VOL=${TERRAMA2_PROJECT_NAME}_geoserver_vol
       echo -n "Creating volume ${GEOSERVER_VOL} ... "
-      docker volume create ${GEOSERVER_VOL} >/dev/null
+      docker volume create ${GEOSERVER_VOL} &>/dev/null
       echo "done."
 
       if [ $(container_exists ${GEOSERVER_CONTAINER}) -eq 1 ]; then
@@ -257,7 +231,7 @@ case ${OPERATION} in
                    --name ${POSTGRESQL_CONTAINER} \
                    --publish ${POSTGRESQL_HOST}:5432 \
                    --volume ${POSTGRESQL_VOL}:/var/lib/postgresql/data \
-                   --env POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
+                   --env-file=${PROJECT_PATH}/.env \
                    mdillon/postgis >log.err
         valid $? "Error: Could not create ${POSTGRESQL_CONTAINER} due $(cat log.err)"
       fi
