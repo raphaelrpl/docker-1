@@ -49,19 +49,23 @@ fi
 ##########################################################
 
 if [ "$#" -lt 1 ]; then
-  echo "Usage: ./terrama2_docker COMMAND PROJECT_NAME"
+  echo "Usage: ./terrama2_docker COMMAND [OPTIONS]"
   echo ""
   echo "COMMAND {rm,up}"
   echo ""
-  echo "The default value for PROJECT_NAME is terrama2"
-  echo ""
-  echo "rm PROJECT_NAME - Remove all containers created associated in project"
-  echo "up PROJECT_NAME - Create all containers within project"
+  echo "--project - TerraMA² Project Name. Default value is \"terrama2\""
+  echo "--with-geoserver - GeoServer bind address. Example: \"127.0.0.1:8080\". It does not start a GeoServer instance if this argument is not set."
+  echo "--with-pg - PostgreSQL bind address. Example: \"127.0.0.1:5432\". It does not start a GeoServer instance if this argument is not set."
   echo ""
   exit 1
 fi
 
+##########################################################
+# Environment
+
 OPERATION=$1
+PROJECT_PATH=${PWD}
+
 for key in "$@"; do
   case $key in
     --with-pg*)
@@ -80,14 +84,6 @@ for key in "$@"; do
   esac
 done
 
-##########################################################
-# Environment Variables
-# TERRAMA2_PROJECT_NAME=$2
-# TERRAMA2_DOCKER_REGISTRY=terrama2.dpi.inpe.br:443
-# TERRAMA2_CONFIG_DIR=./conf
-# TERRAMA2_DATA_DIR=data_vol
-PROJECT_PATH=${PWD}
-
 if [ -z "${TERRAMA2_PROJECT_NAME}" ]; then
   TERRAMA2_PROJECT_NAME="terrama2"
 
@@ -105,6 +101,7 @@ echo "# Variables #"
 echo "#############"
 echo ""
 cat ${PROJECT_PATH}/.env
+echo ""
 ##########################################################
 
 cd ${PROJECT_PATH}
