@@ -13,13 +13,17 @@ function valid() {
 }
 
 function display_usage() {
+  echo ""
   echo "Usage: ./terrama2_docker COMMAND [OPTIONS]"
   echo ""
   echo "COMMAND {rm,up,stop,status}"
   echo ""
   echo "--project - TerraMA² Project Name. Default value is \"terrama2\""
-  echo "--with-geoserver - GeoServer bind address. Example: \"127.0.0.1:8080\". It does not start a GeoServer instance if this argument is not set."
-  echo "--with-pg - PostgreSQL bind address. Example: \"127.0.0.1:5432\". It does not start a GeoServer instance if this argument is not set."
+  echo "--with-geoserver - GeoServer bind address. Example: \"--with-geoserver=127.0.0.1:8080\". It does not handle GeoServer when argument is not set."
+  echo "--with-pg - PostgreSQL bind address. Example: \"127.0.0.1:5432\". It does not handle PostgreSQL when argument is not set."
+  echo "--all (status) - Used to display status of all services"
+  echo ""
+  echo "IMPORTANT: When passing any argument with value, you must use the syntax \"--argument=value\" instead \"--argument value\" to work properly."
   echo ""
   exit 1
 }
@@ -138,20 +142,25 @@ case ${OPERATION} in
     _SERVICE_FLAG=0
     # TODO: Confirmation when a container can be removed.
     if [ ! -z "$_RUN_GEOSERVER" ] && [ "$_RUN_GEOSERVER" == "true" ]; then
-      if [ ! $(is_running ${GEOSERVER_CONTAINER}) -eq 1 ]; then
-        _SERVICE_FLAG=1
-        echo -n "Removing GeoServer ... "
-        remove_container ${GEOSERVER_CONTAINER}
-        valid $? "Error: Could not remove container ${GEOSERVER_CONTAINER}"
+      if [ $(container_exists ${GEOSERVER_CONTAINER}) -eq 1 ]; then
+        if [ $(is_running ${GEOSERVER_CONTAINER}) -eq 0 ]; then # False
+          _SERVICE_FLAG=1
+          echo -n "Removing GeoServer ... "
+          remove_container ${GEOSERVER_CONTAINER}
+          valid $? "Error: Could not remove container ${GEOSERVER_CONTAINER}"
+        fi
       fi
     fi
 
+    exit 
     if [ ! -z "$_RUN_PG" ] && [ "$_RUN_PG" == "true" ]; then
-      if [ ! $(is_running ${POSTGRESQL_CONTAINER}) -eq 1 ]; then
-        _SERVICE_FLAG=1
-        echo -n "Removing PostgreSQL ... "
-        remove_container ${POSTGRESQL_CONTAINER}
-        valid $? "Error: Could not remove container ${POSTGRESQL_CONTAINER}"
+      if [ $(container_exists ${POSTGRESQL_CONTAINER}) -eq 1 ]; then
+        if [ ! $(is_running ${POSTGRESQL_CONTAINER}) -eq 1 ]; then
+          _SERVICE_FLAG=1
+          echo -n "Removing PostgreSQL ... "
+          remove_container ${POSTGRESQL_CONTAINER}
+          va  lid $? "Error: Could not remove container ${POSTGRESQL_CONTAINER}"
+        fi
       fi
     fi
 
