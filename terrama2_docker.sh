@@ -15,7 +15,7 @@ function valid() {
 function display_usage() {
   echo "Usage: ./terrama2_docker COMMAND [OPTIONS]"
   echo ""
-  echo "COMMAND {rm,up}"
+  echo "COMMAND {rm,up,stop,status}"
   echo ""
   echo "--project - TerraMA² Project Name. Default value is \"terrama2\""
   echo "--with-geoserver - GeoServer bind address. Example: \"127.0.0.1:8080\". It does not start a GeoServer instance if this argument is not set."
@@ -61,6 +61,7 @@ function remove_container() {
   fi
 }
 
+# Flag to enable Debug. Display each line execution
 if [ ! -z "${DEBUG_MODE}" ]; then
   set -x
 fi
@@ -76,6 +77,7 @@ fi
 OPERATION=$1
 PROJECT_PATH=${PWD}
 
+# Parse Arguments
 for key in "$@"; do
   case $key in
     --with-pg*)
@@ -93,6 +95,9 @@ for key in "$@"; do
     ;;
     --geoserver-url*)
     GEOSERVER_URL="${key#*=}"
+    ;;
+    --all)
+      _EXECUTE_ALL=true
     ;;
   esac
 done
@@ -277,6 +282,18 @@ case ${OPERATION} in
     echo -n "Starting TerraMA² ... "
     docker-compose -p ${TERRAMA2_PROJECT_NAME} up -d 2>log.err
     valid $? "Error: Could not start terrama2 due $(cat log.err)"
+  ;;
+
+  "status")
+    if [ ! -z "$_EXECUTE_ALL" ] && [ "$_EXECUTE_ALL" == "true" ]; then
+      _FILTERS="-f name=${GEOSERVER_CONTAINER} -f name=${POSTGRESQL_CONTAINER}"
+    fi
+
+    _PROJECTS=$(docker-compose -p ${TERRAMA2_PROJECT_NAME} ps | grep ${TERRAMA2_PROJECT_NAME} | awk '{printf " -f name=%s", $1}')
+    _FILTERS="${_FILTERS} ${_PROJECTS}"
+    _FORMAT="table {{.ID}}\t{{.Image}}\t{{.CreatedAt}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}"
+
+    docker ps --format "${_FORMAT}" -a ${_FILTERS}
   ;;
   # Default
   *)
