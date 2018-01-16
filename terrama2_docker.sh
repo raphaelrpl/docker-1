@@ -12,6 +12,18 @@ function valid() {
   fi
 }
 
+function display_usage() {
+  echo "Usage: ./terrama2_docker COMMAND [OPTIONS]"
+  echo ""
+  echo "COMMAND {rm,up}"
+  echo ""
+  echo "--project - TerraMA² Project Name. Default value is \"terrama2\""
+  echo "--with-geoserver - GeoServer bind address. Example: \"127.0.0.1:8080\". It does not start a GeoServer instance if this argument is not set."
+  echo "--with-pg - PostgreSQL bind address. Example: \"127.0.0.1:5432\". It does not start a GeoServer instance if this argument is not set."
+  echo ""
+  exit 1
+}
+
 function is_running() {
   local CONTAINER_NAME=$1
 
@@ -20,6 +32,12 @@ function is_running() {
   else
     echo 0
   fi
+}
+
+function is_compose_running() {
+  local PROJECT_NAME=$1
+  
+  echo $(docker-compose -p ${PROJECT_NAME} ps | grep Up | wc -l)
 }
 
 function container_exists() {
@@ -35,7 +53,7 @@ function container_exists() {
 function remove_container() {
   local CONTAINER_NAME=$1
 
-  if [ "$(docker ps -aq -f name=${CONTAINER_NAME})" ]; then 
+  if [ $(container_exists ${CONTAINER_NAME}) -eq 1 ]; then 
     if [ "$(docker ps -aq -f status=exited -f status=created -f name=${CONTAINER_NAME})" ]; then
       # cleanup
       docker rm ${CONTAINER_NAME} &>/dev/null
@@ -49,15 +67,7 @@ fi
 ##########################################################
 
 if [ "$#" -lt 1 ]; then
-  echo "Usage: ./terrama2_docker COMMAND [OPTIONS]"
-  echo ""
-  echo "COMMAND {rm,up}"
-  echo ""
-  echo "--project - TerraMA² Project Name. Default value is \"terrama2\""
-  echo "--with-geoserver - GeoServer bind address. Example: \"127.0.0.1:8080\". It does not start a GeoServer instance if this argument is not set."
-  echo "--with-pg - PostgreSQL bind address. Example: \"127.0.0.1:5432\". It does not start a GeoServer instance if this argument is not set."
-  echo ""
-  exit 1
+  display_usage
 fi
 
 ##########################################################
@@ -81,6 +91,9 @@ for key in "$@"; do
     --project*)
     TERRAMA2_PROJECT_NAME="${key#*=}"
     ;;
+    --geoserver-url*)
+    GEOSERVER_URL="${key#*=}"
+    ;;
   esac
 done
 
@@ -94,14 +107,20 @@ if [ -z "${TERRAMA2_PROJECT_NAME}" ]; then
   echo ""
 fi
 
+if [ -z "${GEOSERVER_URL}" ]; then
+  GEOSERVER_URL="/${TERRAMA2_PROJECT_NAME}/geoserver"
+fi
+
 ##########################################################
-echo ""
-echo "#############"
-echo "# Variables #"
-echo "#############"
-echo ""
-cat ${PROJECT_PATH}/.env
-echo ""
+if [ ! -z "$DEBUG_MODE" ]; then
+  echo ""
+  echo "#############"
+  echo "# Variables #"
+  echo "#############"
+  echo ""
+  cat ${PROJECT_PATH}/.env
+  echo ""
+fi
 ##########################################################
 
 cd ${PROJECT_PATH}
@@ -111,35 +130,41 @@ POSTGRESQL_CONTAINER=${TERRAMA2_PROJECT_NAME}_pg
 
 case ${OPERATION} in
   "rm")
-    echo ""
+    _SERVICE_FLAG=0
     # TODO: Confirmation when a container can be removed.
     if [ ! -z "$_RUN_GEOSERVER" ] && [ "$_RUN_GEOSERVER" == "true" ]; then
       if [ ! $(is_running ${GEOSERVER_CONTAINER}) -eq 1 ]; then
+        _SERVICE_FLAG=1
         echo -n "Removing GeoServer ... "
         remove_container ${GEOSERVER_CONTAINER}
         valid $? "Error: Could not remove container ${GEOSERVER_CONTAINER}"
-      else
-        echo "GeoServer is running."
       fi
     fi
 
     if [ ! -z "$_RUN_PG" ] && [ "$_RUN_PG" == "true" ]; then
       if [ ! $(is_running ${POSTGRESQL_CONTAINER}) -eq 1 ]; then
+        _SERVICE_FLAG=1
         echo -n "Removing PostgreSQL ... "
         remove_container ${POSTGRESQL_CONTAINER}
         valid $? "Error: Could not remove container ${POSTGRESQL_CONTAINER}"
-      else
-        echo "PostgreSQL is running."
       fi
     fi
-    echo -n "Removing TerraMA² ... "
-    printf 'y\n' | docker-compose -p ${TERRAMA2_PROJECT_NAME} rm &>/dev/null
-    valid $? "Error: Could not remove TerraMA²"
+
+    # Docker Compose Count running Services
+    if [ $(is_compose_running ${TERRAMA2_PROJECT_NAME}) -eq 0 ]; then
+      _SERVICE_FLAG=1
+      echo -n "Removing TerraMA² ... "
+      printf 'y\n' | docker-compose -p ${TERRAMA2_PROJECT_NAME} rm &>/dev/null
+      valid $? "Error: Could not remove TerraMA²"
+    fi
+
+    if [ ${_SERVICE_FLAG} -eq 0 ]; then
+      echo "No stopped containers"
+    fi
     exit 0
   ;;
 
   "stop")
-    echo ""
     if [ ! -z "$_RUN_GEOSERVER" ] && [ "$_RUN_GEOSERVER" == "true" ]; then
       if [ $(is_running ${GEOSERVER_CONTAINER}) -eq 1 ]; then
         echo -n "Stopping GeoServer ... "
@@ -156,9 +181,11 @@ case ${OPERATION} in
       fi
     fi
 
-    echo -n "Stopping TerraMA² ... "
-    docker-compose -p ${TERRAMA2_PROJECT_NAME} stop 2>/dev/null
-    valid $? "Error: Could not stop TerraMA². Is it running?"
+    if [ $(is_compose_running ${TERRAMA2_PROJECT_NAME}) -ne 0 ]; then
+      echo -n "Stopping TerraMA² ... "
+      docker-compose -p ${TERRAMA2_PROJECT_NAME} stop 2>/dev/null
+      valid $? "Error: Could not stop TerraMA². Is it running?"
+    fi
 
     exit 0
   ;;
@@ -172,9 +199,6 @@ case ${OPERATION} in
       echo ""
 
       GEOSERVER_VOL=${TERRAMA2_PROJECT_NAME}_geoserver_vol
-      echo -n "Creating volume ${GEOSERVER_VOL} ... "
-      docker volume create ${GEOSERVER_VOL} &>/dev/null
-      echo "done."
 
       if [ $(container_exists ${GEOSERVER_CONTAINER}) -eq 1 ]; then
         if [ $(is_running ${GEOSERVER_CONTAINER}) -eq 1 ]; then
@@ -185,12 +209,15 @@ case ${OPERATION} in
           valid $? "Could not start Geoserver container"
         fi
       else
+        echo -n "Creating volume ${GEOSERVER_VOL} ... "
+        docker volume create ${GEOSERVER_VOL} &>/dev/null
+        echo "done."
         echo -n "Creating container ${GEOSERVER_CONTAINER} ... "
         docker run --detach \
                    --restart unless-stopped \
                    --name ${GEOSERVER_CONTAINER} \
                    --publish ${GEOSERVER_HOST}:8080 \
-                   --env "GEOSERVER_URL=/${TERRAMA2_PROJECT_NAME}/geoserver" \
+                   --env "GEOSERVER_URL=${GEOSERVER_URL}" \
                    --env "GEOSERVER_DATA_DIR=/opt/geoserver/data_dir" \
                    --volume terrama2_shared_vol:/shared-data \
                    --volume ${TERRAMA2_PROJECT_NAME}_data_vol:/data \
@@ -209,9 +236,6 @@ case ${OPERATION} in
       echo ""
 
       POSTGRESQL_VOL=${TERRAMA2_PROJECT_NAME}_pg_vol
-      echo -n "Creating volume ${POSTGRESQL_VOL} ... "
-      docker volume create ${POSTGRESQL_VOL} &>/dev/null
-      echo "done."
 
       if [ $(container_exists ${POSTGRESQL_CONTAINER}) -eq 1 ]; then
         if [ $(is_running ${POSTGRESQL_CONTAINER}) -eq 1 ]; then
@@ -222,6 +246,9 @@ case ${OPERATION} in
           valid $? "Could not start PostgreSQL container"
         fi
       else
+        echo -n "Creating volume ${POSTGRESQL_VOL} ... "
+        docker volume create ${POSTGRESQL_VOL} &>/dev/null
+        echo "done."
         echo -n "Creating container ${POSTGRESQL_CONTAINER} ... "
         docker run --detach \
                    --restart unless-stopped \
@@ -250,5 +277,9 @@ case ${OPERATION} in
     echo -n "Starting TerraMA² ... "
     docker-compose -p ${TERRAMA2_PROJECT_NAME} up -d 2>log.err
     valid $? "Error: Could not start terrama2 due $(cat log.err)"
+  ;;
+  # Default
+  *)
+    display_usage
   ;;
 esac
