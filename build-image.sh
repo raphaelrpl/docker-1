@@ -10,6 +10,9 @@ function is_valid() {
   fi
 }
 
+echo ""
+echo "TerraMA² Docker Image generation"
+echo ""
 # Variables
 _current_dir=${PWD}
 eval $(egrep -v '^#' .env | xargs)
